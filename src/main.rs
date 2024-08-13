@@ -1,17 +1,15 @@
-// use alloy::{
-//     primitives::H256,
-//     providers::{Provider, ProviderBuilder},
-//     sol,
-//     types::{Trace, TransactionTrace},
-// };
-use alloy::primitives::{Address, B256};
-use alloy::providers::{Provider, ProviderBuilder};
-use alloy::rpc::types::eth::*;
-use alloy::rpc::types::trace;
-use alloy::sol;
+use alloy::{
+    primitives::b256,
+    providers::{ext::DebugApi, ProviderBuilder},
+    rpc::types::trace::geth::{
+        GethDebugBuiltInTracerType, GethDebugTracerType, GethDebugTracingOptions,
+        GethDefaultTracingOptions,
+    },
+    sol,
+};
+
 use clap::Parser;
 use eyre::Result;
-use std::str::FromStr;
 use tx_event::CliInput;
 
 sol!(
@@ -24,24 +22,50 @@ sol!(
 pub async fn main() -> Result<()> {
     let args = CliInput::parse();
 
-    // let provider = ProviderBuilder::new().on_http(args.rpc_url);
-    // let latest_block = provider.get_block_number().await?;
+    let provider = ProviderBuilder::new().on_http(args.rpc_url);
 
-    let provider = ProviderBuilder::new()
-        .on_http(args.rpc_url.clone())
-        .build()?;
-    let tx_hash = H256::from_str(&args.tx_hash)?;
-    let trace: Option<TransactionTrace> = provider.trace_transaction(tx_hash).await?;
+    let tx_hash = b256!("ebbd7c26798e0de81b02f916cd97365754e9394d28d24a98e79974254ef8c32b");
+    // let tx_hash = B256::from_str(&args.tx_hash)?;
 
-    if let Some(tx_trace) = trace {
-        for step in tx_trace.steps {
-            if let Trace::Log(log) = step {
-                println!("Found log: {:?}", log);
-            }
-        }
-    } else {
-        println!("No trace found for transaction hash: {}", args.tx_hash);
-    }
-    // println!("Latest block number: {latest_block}");
+    let default_options = GethDebugTracingOptions {
+        tracer: Some(GethDebugTracerType::BuiltInTracer(
+            GethDebugBuiltInTracerType::CallTracer,
+        )),
+        ..Default::default()
+    };
+    let result = provider
+        .debug_trace_transaction(tx_hash, default_options)
+        .await?;
+
+    println!("DEFAULT_TRACE: {result:?}");
+
+    let call_options = GethDebugTracingOptions {
+        config: GethDefaultTracingOptions {
+            disable_storage: Some(true),
+            enable_memory: Some(false),
+            ..Default::default()
+        },
+        tracer: Some(GethDebugTracerType::BuiltInTracer(
+            GethDebugBuiltInTracerType::CallTracer,
+        )),
+        ..Default::default()
+    };
+    let result = provider
+        .debug_trace_transaction(tx_hash, call_options)
+        .await?;
+
+    println!("CALL_TRACE: {result:?}");
+
+    let js_options = GethDebugTracingOptions {
+        tracer: Some(GethDebugTracerType::BuiltInTracer(
+            GethDebugBuiltInTracerType::CallTracer,
+        )),
+        ..Default::default()
+    };
+    let result = provider
+        .debug_trace_transaction(tx_hash, js_options)
+        .await?;
+
+    println!("JS_TRACER: {result:?}");
     Ok(())
 }
