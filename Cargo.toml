@@ -1,0 +1,11 @@
+[package]
+name = "tx_event"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { version = "4.0", features = ["derive", "env"] }
+alloy = { version = "0.2", features = ["full"] }
+tokio = { version = "1.39.2", features = ["full"] }      # For hex decoding
+eyre = "0.6.12"
+url = "2.2"
