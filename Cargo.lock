@@ -3886,6 +3886,7 @@ dependencies = [
  "alloy",
  "clap",
  "eyre",
+ "futures-util",
  "serde",
  "serde_json",
  "tokio",
