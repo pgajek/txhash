@@ -1,7 +1,7 @@
 use alloy::{
     node_bindings::Anvil,
     // primitives::b256,
-    primitives::{address, B256, U256},
+    primitives::{address, Address, Uint, B256, U256},
     // providers::{ext::DebugApi, ProviderBuilder, WsConnect},
     providers::{Provider, ProviderBuilder, WsConnect},
     // rpc::types::trace::geth::{
@@ -13,15 +13,16 @@ use alloy::{
     sol_types::SolEvent,
 };
 
-use futures_util::stream::StreamExt;
-
 use clap::Parser;
 use eyre::Result;
+use futures_util::stream::StreamExt;
+use std::time::Duration;
+use tokio::time::sleep;
 use tx_event::CliInput;
 
 sol!(
     #[allow(missing_docs)]
-    #[sol(rpc, bytecode = "6080604052348015600f57600080fd5b5061039c8061001f6000396000f3fe60806040526004361061004a5760003560e01c80632e1a7d4d1461004f57806361b8ce8c146100715780638c64ea4a1461009a5780639507d39a1461010b578063b6b55f25146101ae575b600080fd5b34801561005b57600080fd5b5061006f61006a366004610326565b6101c1565b005b34801561007d57600080fd5b5061008760005481565b6040519081526020015b60405180910390f35b3480156100a657600080fd5b506100e46100b5366004610326565b60016020819052600091825260409091208054918101546002909101546001600160a01b039092169160ff1683565b604080516001600160a01b0390941684526020840192909252151590820152606001610091565b34801561011757600080fd5b50610181610126366004610326565b6040805160608082018352600080835260208084018290529284018190529384526001808352938390208351918201845280546001600160a01b03168252938401549181019190915260029092015460ff1615159082015290565b6040805182516001600160a01b031681526020808401519082015291810151151590820152606001610091565b6100876101bc366004610326565b610282565b6000818152600160205260409020600281015460ff16156101f55760405163939e783760e01b815260040160405180910390fd5b80546001600160a01b0316331461021f5760405163b39ed90360e01b815260040160405180910390fd5b60028101805460ff191660019081179091558154908201546040516001600160a01b039092169184917f9da6493a92039daf47d1f2d7a782299c5994c6323eb1e972f69c432089ec52bf9161027691815260200190565b60405180910390a35050565b6000816000036102a557604051635e85ae7360e01b815260040160405180910390fd5b60008054604080516060810182523381526020808201878152828401868152858752600192839052938620925183546001600160a01b0319166001600160a01b03909116178355518282015591516002909101805460ff1916911515919091179055825491929091819061031a90849061033f565b90915550909392505050565b60006020828403121561033857600080fd5b5035919050565b8082018082111561036057634e487b7160e01b600052601160045260246000fd5b9291505056fea26469706673582212204c96afc9f418175c4c5d0a373113b4ecda4bac65f7474c25c2ed8ab71db8255c64736f6c634300081a0033")]
+    #[sol(rpc, bytecode = "60808060405234601557610324908161001a8239f35b5f80fdfe6080806040526004361015610012575f80fd5b5f3560e01c9081632e1a7d4d146102235750806361b8ce8c146102075780638c64ea4a146101b95780639507d39a146101395763b6b55f2514610053575f80fd5b6020366003190112610135576004358015610126575f546100726102ba565b3381526002602082019184835260408101925f8452845f52600160205260405f209160018060a01b039051166bffffffffffffffffffffffff60a01b835416178255516001820155019051151560ff801983541691161790555f549160018301809311610112576020925f55604051908152817feaa18152488ce5959073c9c79c88ca90b3d96c00de1f118cfaad664c3dab06b9843393a3604051908152f35b634e487b7160e01b5f52601160045260245ffd5b635e85ae7360e01b5f5260045ffd5b5f80fd5b34610135576020366003190112610135575f60406101556102ba565b82815282602082015201526004355f526001602052606060405f206101786102ba565b60018060a01b0382541691828252604060ff600260018401549360208601948552015416920191151582526040519283525160208301525115156040820152f35b34610135576020366003190112610135576004355f526001602052606060405f2060018060a01b038154169060ff600260018301549201541690604051928352602083015215156040820152f35b34610135575f3660031901126101355760205f54604051908152f35b3461013557602036600319011261013557600435805f52600160205260405f206002810180549360ff85166102ab5782546001600160a01b03169433860361029c577f9da6493a92039daf47d1f2d7a782299c5994c6323eb1e972f69c432089ec52bf936020936001809360ff191617905501548152a3005b63b39ed90360e01b5f5260045ffd5b63939e783760e01b5f5260045ffd5b604051906060820182811067ffffffffffffffff8211176102da57604052565b634e487b7160e01b5f52604160045260245ffdfea2646970667358221220f79159ae66cea60e633f25b819044323f2ea47717dc1aeccfee8bb8fa16ec03a64736f6c634300081a0033")]
     contract VaultContract {
         struct Vault {
             address owner;
@@ -33,6 +34,7 @@ sol!(
         mapping(uint256 => Vault) public vaults;
 
         event Withdraw(uint256 indexed id, address indexed owner, uint256 amount);
+        event Deposit(uint256 indexed id, address indexed owner, uint256 amount);
 
         error AmountMustBeGreaterThanZero();
         error CallerMustBeVaultOwner();
@@ -50,6 +52,8 @@ sol!(
             uint256 id = nextId;
             vaults[id] = Vault({owner: msg.sender, amount: amount, spent: false});
             nextId += 1;
+
+            emit Deposit(id, msg.sender, amount);
 
             return id;
         }
@@ -71,6 +75,7 @@ sol!(
         }
     }
 );
+
 #[tokio::main]
 pub async fn main() -> Result<()> {
     let args = CliInput::parse();
@@ -80,41 +85,63 @@ pub async fn main() -> Result<()> {
 
     let contract = VaultContract::deploy(provider.clone()).await?;
 
-    println!("Deployed contract at: {}", contract.address());
+    // println!("Deployed contract at: {}", contract.address());
 
+    let sender: Address = "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+        .parse()
+        .unwrap();
+
+    let deposit_filter = contract.Deposit_filter().watch().await?;
     let withdraw_filter = contract.Withdraw_filter().watch().await?;
 
-    let amount = U256::from(10);
+    let deposit_call = contract.deposit(Uint::from(1000u64)).from(sender);
 
-    let deposit_call = contract.deposit(amount);
-    let deposit_call1 = contract.deposit(amount);
-    let deposit_call2 = contract.deposit(amount);
-    let deposit_call3 = contract.deposit(amount);
+    let deposit_tx = deposit_call.send().await?;
+    let deposit_tx_hash = deposit_tx.tx_hash();
+    // println!("Deposit transaction sent with hash: {:?}", deposit_tx_hash);
 
-    let amount = U256::from(1);
+    let deposit_receipt = loop {
+        if let Some(receipt) = provider.get_transaction_receipt(*deposit_tx_hash).await? {
+            break receipt;
+        } else {
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        }
+    };
+    // println!(
+    //     "Deposit transaction confirmed with receipt: {:?}",
+    //     deposit_receipt
+    // );
 
-    let withdraw_call = contract.withdraw(amount);
+    let vault_id = 0;
 
-    let dep = deposit_call.send().await?;
-    println!("Receipt {:?}", dep);
-    let dep1 = deposit_call1.send().await?;
-    println!("Receipt {:?}", dep1);
-    let dep2 = deposit_call2.send().await?;
-    println!("Receipt {:?}", dep2);
-    let dep3 = deposit_call3.send().await?;
-    println!("Receipt {:?}", dep3);
-    println!("Deposit");
-    let with = withdraw_call.send().await?;
-    println!("Receipt {:?}", with);
-    println!("withdraw");
+    let withdraw_call = contract.withdraw(Uint::from(vault_id)).from(sender);
 
-    withdraw_filter
+    let withdraw_tx = withdraw_call.send().await?;
+    let withdraw_tx_hash = withdraw_tx.tx_hash();
+    // println!(
+    //     "Withdraw transaction sent with hash: {:?}",
+    //     withdraw_tx_hash
+    // );
+
+    let withdraw_receipt = loop {
+        if let Some(receipt) = provider.get_transaction_receipt(*withdraw_tx_hash).await? {
+            break receipt;
+        } else {
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        }
+    };
+    // println!(
+    //     "Withdraw transaction confirmed with receipt: {:?}",
+    //     withdraw_receipt
+    // );
+
+    deposit_filter
         .into_stream()
         .take(1)
         .for_each(|log| async {
             match log {
                 Ok((_event, log)) => {
-                    println!("Received withdraw: {log:?}");
+                    println!("Received Deposit: {log:?}");
                 }
                 Err(e) => {
                     println!("Error: {e:?}");
@@ -122,6 +149,23 @@ pub async fn main() -> Result<()> {
             }
         })
         .await;
+
+    withdraw_filter
+        .into_stream()
+        .take(1)
+        .for_each(|log| async {
+            match log {
+                Ok((_event, log)) => {
+                    println!("Received Withdraw: {log:?}");
+                }
+                Err(e) => {
+                    println!("Error: {e:?}");
+                }
+            }
+        })
+        .await;
+
+    // ```````````````````````````````````````````
     // let weth9_token_address = address!("7b16d831F6819aa2C8191392e867C5f86f7f93B9");
     // let filter = Filter::new()
     //     .address(weth9_token_address)
