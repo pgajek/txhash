@@ -1,20 +1,36 @@
 use alloy::{
     consensus::ReceiptEnvelope,
-    primitives::{b256, keccak256, Address, FixedBytes, Uint, U256},
+    primitives::{b256, keccak256, Address, FixedBytes, B256, U256},
     providers::{Provider, ProviderBuilder},
 };
-
 use clap::Parser;
 use eyre::Result;
 use tx_event::CliInput;
+use url::Url;
 
 #[tokio::main]
 pub async fn main() -> Result<()> {
     let args = CliInput::parse();
 
-    let provider = ProviderBuilder::new().on_http(args.rpc_url);
-
     let tx_hash = b256!("78fc628fdaca0fff3bc4a096f3809706935e415a98f3e6d3470dc8f63c2ff3d5");
+
+    if let Some((id, owner, amount)) = parse_withdraw_event(args.rpc_url, tx_hash).await? {
+        println!("Event: Withdraw");
+        println!("ID: {:?}", id);
+        println!("Owner: {:?}", owner);
+        println!("Amount: {:?}", amount);
+    } else {
+        println!("No matching Withdraw event found.");
+    }
+
+    Ok(())
+}
+
+async fn parse_withdraw_event(
+    rpc_url: Url,
+    tx_hash: B256,
+) -> Result<Option<(U256, Address, U256)>> {
+    let provider = ProviderBuilder::new().on_http(rpc_url);
 
     let fixed_bytes_hash: FixedBytes<32> = FixedBytes::from(tx_hash);
 
@@ -30,16 +46,12 @@ pub async fn main() -> Result<()> {
                 for log in logs {
                     let log_topics = &log.inner.data.topics();
                     let log_data = &log.inner.data.data;
-                    println!("Data: {:#?}", log_data);
-                    println!("Topics: {:#?}", log_topics);
 
                     if log_topics.len() > 0
                         && log_topics[0].as_slice() == expected_event_signature.as_slice()
                     {
-                        // Decode id (topics[1])
                         let id = U256::from_be_slice(&log_topics[1].as_slice());
 
-                        // Decode owner address (topics[2])
                         let owner_bytes: [u8; 20] = log_topics[2].as_slice()[12..32]
                             .try_into()
                             .expect("Incorrect length: expected [u8; 20]");
@@ -47,10 +59,7 @@ pub async fn main() -> Result<()> {
 
                         let amount = U256::from_be_slice(log_data.as_ref());
 
-                        println!("Event: Withdraw");
-                        println!("ID: {:?}", id);
-                        println!("Owner: {:?}", owner);
-                        println!("Amount: {:?}", amount);
+                        return Ok(Some((id, owner, amount)));
                     }
                 }
             }
@@ -58,5 +67,5 @@ pub async fn main() -> Result<()> {
         }
     }
 
-    Ok(())
+    Ok(None)
 }
