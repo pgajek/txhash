@@ -3886,8 +3886,8 @@ dependencies = [
  "alloy",
  "clap",
  "eyre",
- "serde",
- "serde_json",
+ "hex-literal",
+ "sha3",
  "tokio",
  "url",
 ]
