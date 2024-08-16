@@ -24,3 +24,5 @@ eyre = "0.6.12"
 url = "2.2"
 sha3 = "0.10.5"
 hex-literal = "0.4.1"
+starknet = { git = "https://github.com/xJonathanLEI/starknet-rs" }
+num-bigint = "0.4"
