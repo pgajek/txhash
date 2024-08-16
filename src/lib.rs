@@ -7,4 +7,6 @@ pub struct CliInput {
     pub tx_hash: String,
     #[arg(long, short, env = "RPC_URL")]
     pub rpc_url: Url,
+    #[arg(long, short, env = "STARKNET_RPC_URL")]
+    pub starknet_rpc_url: String,
 }
